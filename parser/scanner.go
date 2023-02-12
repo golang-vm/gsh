@@ -1,5 +1,5 @@
 
-package sh_parser
+package parser
 
 import (
 	"go/ast"
@@ -43,7 +43,7 @@ func (s *Scanner)Scan()(nodes []ast.Node, err error){
 		if err == nil {
 			return nodes, nil
 		}
-		if !parser.IsUnexceptEOF() {
+		if !parser.IsUnexpectEOF() {
 			return
 		}
 		var ext []byte
