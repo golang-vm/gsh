@@ -383,6 +383,21 @@ func (p *Parser)parseStmt()(ast.Stmt){
 		})
 		if decl == nil { return nil }
 		return &ast.DeclStmt{Decl: decl}
+	case token.FUNC:
+		recv, name, ok := p.parseFuncDecl()
+		if !ok {
+			return nil
+		}
+		fc, bd := p.parseFuncExpr()
+		if fc == nil {
+			return nil
+		}
+		return &ast.DeclStmt{Decl: &ast.FuncDecl{
+			Recv: recv,
+			Name: name,
+			Type: fc,
+			Body: bd,
+		} }
 	case token.LBRACE:
 		return p.parseBlock()
 	case token.IDENT:
@@ -456,6 +471,71 @@ func (p *Parser)parseDecl(cb func()(ast.Spec))(*ast.GenDecl){
 	}
 }
 
+func (p *Parser)parseFuncDecl()(recv *ast.FieldList, name *ast.Ident, ok bool){
+	if !p.nextExcept(token.LPAREN, token.IDENT) {
+		return nil, nil, false
+	}
+	if p.tok == token.LPAREN {
+		recv = &ast.FieldList{ Opening: p.pos }
+		if !p.nextExcept(token.IDENT, token.MUL) {
+			return nil, nil, false
+		}
+		var ident *ast.Ident
+		if p.tok == token.IDENT {
+			ident = &ast.Ident{
+				NamePos: p.pos,
+				Name: p.lit,
+			}
+			if !p.nextExcept(token.IDENT, token.MUL, token.RPAREN) {
+				return nil, nil, false
+			}
+		}
+		if p.tok == token.RPAREN {
+			recv.List = []*ast.Field{ &ast.Field{
+				Type: ident,
+			} }
+		}else{
+			var typ ast.Expr
+			if p.tok == token.MUL {
+				ps := p.pos
+				if !p.nextExcept(token.IDENT) {
+					return nil, nil, false
+				}
+				typ = &ast.StarExpr{
+					Star: ps,
+					X: &ast.Ident{
+						NamePos: p.pos,
+						Name: p.lit,
+					},
+				}
+			}else{
+				typ = &ast.Ident{
+					NamePos: p.pos,
+					Name: p.lit,
+				}
+			}
+			recv.List = []*ast.Field{ &ast.Field{
+				Names: []*ast.Ident{ident},
+				Type: typ,
+			} }
+			if !p.nextExcept(token.RPAREN) {
+				return nil, nil, false
+			}
+		}
+		if !p.nextExcept(token.IDENT) {
+			return nil, nil, false
+		}
+	}
+	if p.tok == token.IDENT {
+		name = &ast.Ident{
+			NamePos: p.pos,
+			Name: p.lit,
+		}
+	}
+	ok = true
+	return
+}
+
 func (p *Parser)parseAssign()(*ast.AssignStmt){
 	var lhs, rhs []ast.Expr
 	for {
@@ -499,18 +579,17 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 	for {
 		switch p.tok {
 		case token.FUNC:
-			fc := p.parseFuncType()
-			if _, tok, _ := p.peek(); tok == token.LBRACE {
-				p.parsing = append(p.parsing, token.FUNC)
-				blk := p.parseBlock()
-				p.parsing = p.parsing[:len(p.parsing) - 1]
-				if blk == nil { return nil }
+			fc, bd := p.parseFuncExpr()
+			if fc == nil {
+				return nil
+			}
+			if bd == nil {
+				expr = fc
+			}else{
 				expr = &ast.FuncLit{
 					Type: fc,
-					Body: blk,
+					Body: bd,
 				}
-			}else{
-				expr = fc
 			}
 		case token.LBRACK, token.STRUCT, token.INTERFACE, token.MAP, token.CHAN, token.ARROW:
 			expr = p.parseType()
@@ -569,6 +648,23 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 		}
 		if !p.next() { return nil }
 	}
+}
+
+func (p *Parser)parseFuncExpr()(fc *ast.FuncType, bd *ast.BlockStmt){
+	fc = p.parseFuncType()
+	if fc == nil {
+		return nil, nil
+	}
+	if _, t, _ := p.peek(); t == token.LBRACE {
+		p.next()
+		p.parsing = append(p.parsing, token.FUNC)
+		bd = p.parseBlock()
+		p.parsing = p.parsing[:len(p.parsing) - 1]
+		if bd == nil {
+			return nil, nil
+		}
+	}
+	return
 }
 
 func (p *Parser)ParseType()(ast.Expr){
@@ -656,13 +752,165 @@ func (p *Parser)parseInterface()(*ast.InterfaceType){
 	return nil
 }
 
+func (p *Parser)parseFuncFields()(*ast.FieldList){
+	start := p.pos
+	var (
+		idents []*ast.Ident
+		list []*ast.Field
+		// flag of type parms
+		flag bool = false
+		// flag of parms
+		flg2 bool = false
+	)
+	L: for {
+		if !p.nextExcept(token.RPAREN, token.IDENT,
+			token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW) {
+			return nil
+		}
+		if p.tok == token.RPAREN {
+			break
+		}
+		if p.tok == token.IDENT {
+			idents = append(idents, &ast.Ident{
+				NamePos: p.pos,
+				Name: p.lit,
+			})
+		}else{
+			if flg2 {
+				p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+				return nil
+			}
+			flag = true
+			for _, d := range idents {
+				list = append(list, &ast.Field{
+					Type: d,
+				})
+			}
+			idents = nil
+			typ := p.parseType()
+			if typ == nil {
+				return nil
+			}
+			list = append(list, &ast.Field{
+				Type: typ,
+			})
+		}
+		if !p.next() {
+			return nil
+		}
+		switch p.tok {
+		case token.IDENT, token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW:
+			if flag {
+				p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+				return nil
+			}
+			flg2 = true
+			typ := p.parseType()
+			if typ == nil {
+				return nil
+			}
+			list = append(list, &ast.Field{
+				Names: idents,
+				Type: typ,
+			})
+			idents = nil
+			if !p.nextExcept(token.COMMA, token.RPAREN) {
+				return nil
+			}
+			if p.tok == token.RPAREN {
+				break L
+			}
+		case token.COMMA:
+		case token.RPAREN:
+			break L
+		default:
+			p.unexceptErr(p.pos, p.tok, p.lit, "a type expr, comma, or ')'")
+			return nil
+		}
+	}
+	if len(idents) > 0 {
+		if flg2 {
+			p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+			return nil
+		}
+		for _, d := range idents {
+			list = append(list, &ast.Field{
+				Type: d,
+			})
+		}
+	}
+	return &ast.FieldList{
+		Opening: start,
+		List: list,
+		Closing: p.pos,
+	}
+}
+
 func (p *Parser)parseFuncType()(*ast.FuncType){
 	pos := p.pos
-	var typp, parm, res *ast.FieldList 
-	if !p.next() { return nil }
+	t, _, ok := p.peekExcept(token.LPAREN, token.LBRACE)
+	if !ok {
+		return nil
+	}
+	if t == token.LBRACE {
+		return &ast.FuncType{
+			Func: pos,
+		}
+	}
+	p.next()
+	if t, _, ok = p.peekExcept(token.RPAREN, token.IDENT,
+		token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW); !ok {
+		return nil
+	}
+	var parm, res *ast.FieldList
+	if p.tok == token.RPAREN {
+		if t == token.EOF || (t != token.LPAREN && t != token.IDENT) {
+			return &ast.FuncType{
+				Func: pos,
+			}
+		}
+		p.next()
+		if p.tok == token.LPAREN {
+			if res = p.parseFuncFields(); res == nil {
+				return nil
+			}
+		}else{
+			typ := p.parseType()
+			if typ == nil {
+				return nil
+			}
+			res = &ast.FieldList{
+				List: []*ast.Field{ &ast.Field{
+					Type: typ,
+				} },
+			}
+		}
+	}else{
+		if parm = p.parseFuncFields(); parm == nil {
+			return nil
+		}
+		_, t, _ = p.peek()
+		switch t {
+		case token.IDENT, token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW:
+			p.next()
+			typ := p.parseType()
+			if typ == nil {
+				return nil
+			}
+			res = &ast.FieldList{
+				List: []*ast.Field{ &ast.Field{
+					Type: typ,
+				} },
+			}
+		case token.LPAREN:
+			p.next()
+			if res = p.parseFuncFields(); res == nil {
+				return nil
+			}
+		}
+	}
 	return &ast.FuncType{
 		Func: pos,
-		TypeParams: typp,
 		Params: parm,
 		Results: res,
 	}
@@ -670,12 +918,20 @@ func (p *Parser)parseFuncType()(*ast.FuncType){
 
 func (p *Parser)parseMapType()(*ast.MapType){
 	pos := p.pos
-	if !p.nextExcept(token.LBRACK) { return nil }
+	if !p.nextExcept(token.LBRACK) {
+		return nil
+	}
 	key := p.ParseType()
-	if key == nil { return nil }
-	p.nextExcept(token.RBRACK)
+	if key == nil {
+		return nil
+	}
+	if !p.nextExcept(token.RBRACK) {
+		return nil
+	}
 	val := p.ParseType()
-	if val == nil { return nil }
+	if val == nil {
+		return nil
+	}
 	return &ast.MapType{
 		Map: pos,
 		Key: key,

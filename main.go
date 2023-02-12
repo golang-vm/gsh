@@ -8,8 +8,8 @@ import (
 	"os"
 	"go/scanner"
 
-	parser "github.com/kmcsr/gsh/parser"
-	cmd "github.com/kmcsr/gsh/command"
+	parser "github.com/golang-vm/gsh/parser"
+	cmd "github.com/golang-vm/gsh/command"
 	ucl "github.com/kmcsr/unixcsl"
 )
 
@@ -24,7 +24,7 @@ func main(){
 	bufreader := bufio.NewReader(os.Stdin)
 	src := cmd.NewSource(bufreader, os.Stdout)
 	csl := ucl.NewConsole(bufreader, os.Stdout)
-	csl.Printf("%s\r\n\r\n", "")
+	csl.Printf("%s\r\n\r\n", "Hi")
 	csl.Printf("GSH (go shell) v%s\r\n", VERSION)
 	csl.Println("Copyright (C) 2022 <https://github.com/zyxkad>")
 	csl.Println("GPLv3.0 LICENSE")
@@ -48,8 +48,8 @@ func main(){
 				}
 			case scanner.ErrorList:
 				csl.Println("<<< Error list:")
-				for _, e := range er {
-					csl.Println(e)
+				for i, e := range er {
+					csl.Printf("E%d: %v\r\n", i + 1, e)
 				}
 			case ucl.CBreakErr:
 				switch er {
@@ -68,9 +68,11 @@ func main(){
 			}
 			continue
 		}
-		csl.Println("nodes:", len(nodes))
-		for i, n := range nodes {
-			csl.Printf("%d: %#v\r\n", i, n)
+		if len(nodes) > 0 {
+			csl.Println("nodes:", len(nodes))
+			for i, n := range nodes {
+				csl.Printf("%d: %#v\r\n", i, n)
+			}
 		}
 	}
 	csl.Println("\r\n~~ Good Bye ~~")
@@ -83,11 +85,11 @@ type consoleWrapper struct{
 var _ parser.LineReader = consoleWrapper{}
 
 func (c consoleWrapper)Reset(){
-	c.Console.SetPrompt(PROMPT)
+	c.Console.SetPrompt(Prompt)
 }
 
 func (c consoleWrapper)ReadLine()(line []byte, err error){
 	line, err = c.Console.ReadLine()
-	c.Console.SetPrompt(CONTINUE_PROMPT)
+	c.Console.SetPrompt(ContinuePrompt)
 	return
 }

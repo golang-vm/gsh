@@ -31,8 +31,12 @@ func Execute(src Source, name string, args ...string)(err error){
 func ExecuteCommand(src Source, cmd string)(err error){
 	var args []string
 	args, err = ParseCommand(cmd)
-	if err != nil { return }
-	if len(args) == 0 { return nil }
+	if err != nil {
+		return
+	}
+	if len(args) == 0 {
+		return nil
+	}
 	return Execute(src, args[0], args[1:]...)
 }
 
@@ -41,5 +45,6 @@ var DefaultExecuter = makeDefaultExecuter()
 func makeDefaultExecuter()(e *Executer){
 	return NewExecuter().
 		Register("exit", ExitCmd{}).
+		Register("sh",   ShellCmd{}).
 		Register("echo", EchoCmd{})
 }

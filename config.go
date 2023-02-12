@@ -2,8 +2,8 @@
 package main
 
 var (
-	PROMPT          string = "gsh> "
-	CONTINUE_PROMPT string = "...> "
+	Prompt          string = "gsh> "
+	ContinuePrompt string = "...> "
 
-	SH_PROMPT string = "# "
+	ShPrompt string = "# "
 )
