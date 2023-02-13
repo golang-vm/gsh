@@ -6,6 +6,7 @@ import (
 	"errors"
 	// "flag"
 	"os"
+	"go/ast"
 	"go/scanner"
 
 	parser "github.com/golang-vm/gsh/parser"
@@ -71,7 +72,9 @@ func main(){
 		if len(nodes) > 0 {
 			csl.Println("nodes:", len(nodes))
 			for i, n := range nodes {
-				csl.Printf("%d: %#v\r\n", i, n)
+				csl.Printf("#%d: ", i)
+				printNode(csl, n)
+				csl.Print("\r\n")
 			}
 		}
 	}
@@ -92,4 +95,114 @@ func (c consoleWrapper)ReadLine()(line []byte, err error){
 	line, err = c.Console.ReadLine()
 	c.Console.SetPrompt(ContinuePrompt)
 	return
+}
+
+func printNode(csl *ucl.Console, n ast.Node){
+	printNode0(csl, n, 0)
+}
+
+func printNode0(csl *ucl.Console, n ast.Node, deep int){
+	switch n0 := n.(type) {
+	case *ast.Ident:
+		printIndent(csl, deep)
+		csl.Printf(" %s ", n0.Name)
+	case *ast.BasicLit:
+		printIndent(csl, deep)
+		csl.Printf("(%s)", n0.Value)
+	case *ast.FuncLit:
+		printNode0(csl, n0.Type, deep)
+		csl.Print(" ")
+		printNode0(csl, n0.Body, deep + 1)
+	case *ast.CompositeLit:
+		if n0.Type != nil {
+			printNode0(csl, n0.Type, deep)
+		}else{
+			printIndent(csl, deep)
+		}
+		csl.Print("{\r\n")
+		for _, e := range n0.Elts {
+			printNode0(csl, e, deep + 1)
+			csl.Print(",\r\n")
+		}
+		printIndent(csl, deep)
+		csl.Print("}")
+	case *ast.ParenExpr:
+		printIndent(csl, deep)
+		csl.Print("(\r\n")
+		printNode0(csl, n0.X, deep + 1)
+		csl.Print("\r\n")
+		printIndent(csl, deep)
+		csl.Print(")")
+	case *ast.SelectorExpr:
+		// TODO
+		printIndent(csl, deep)
+		csl.Printf("%#v", *n0)
+	case *ast.IndexExpr:
+		printNode0(csl, n0.X, deep)
+		csl.Print("[\r\n")
+		printNode0(csl, n0.Index, deep + 1)
+		csl.Print("\r\n")
+		printIndent(csl, deep)
+		csl.Print("]")
+	case *ast.IndexListExpr:
+		printNode0(csl, n0.X, deep)
+		csl.Print("[\r\n")
+		for _, e := range n0.Indices {
+			printNode0(csl, e, deep + 1)
+			csl.Print(",\r\n")
+		}
+		printIndent(csl, deep)
+		csl.Print("]")
+	case *ast.SliceExpr:
+		// TODO
+		printIndent(csl, deep)
+		csl.Printf("%#v", *n0)
+	case *ast.TypeAssertExpr:
+		// TODO
+		printIndent(csl, deep)
+		csl.Printf("%#v", *n0)
+	case *ast.CallExpr:
+		printNode0(csl, n0.Fun, deep)
+		csl.Print("(\r\n")
+		for _, e := range n0.Args {
+			printNode0(csl, e, deep + 1)
+			csl.Print(",\r\n")
+		}
+		printIndent(csl, deep)
+		csl.Print(")")
+	case *ast.StarExpr:
+		// TODO
+		printIndent(csl, deep)
+		csl.Printf("%#v", *n0)
+	case *ast.UnaryExpr:
+		// TODO
+		printIndent(csl, deep)
+		csl.Printf("%#v", *n0)
+	case *ast.BinaryExpr:
+		printIndent(csl, deep)
+		csl.Printf("[ %s\r\n", n0.Op.String())
+		printNode0(csl, n0.X, deep + 1)
+		csl.Print(",\r\n")
+		printNode0(csl, n0.Y, deep + 1)
+		csl.Print("\r\n")
+		printIndent(csl, deep)
+		csl.Print("]")
+	case *ast.ExprStmt:
+		printNode0(csl, n0.X, deep)
+	default:
+		printIndent(csl, deep)
+		csl.Printf("%#v", n)
+	}
+}
+
+var indentCache string = "        "
+
+func printIndent(csl *ucl.Console, deep int){
+	if deep == 0 {
+		return
+	}
+	for deep > len(indentCache) {
+		indentCache += " "
+	}
+	csl.Print(indentCache[:deep])
 }

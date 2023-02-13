@@ -418,7 +418,7 @@ func (p *Parser)parseStmt()(ast.Stmt){
 				if !p.next() {
 					return nil
 				}
-				expr := p.parseExpr()
+				expr := p.parseExpr(false)
 				if expr == nil {
 					return nil
 				}
@@ -490,7 +490,7 @@ func (p *Parser)parseStmt()(ast.Stmt){
 		}
 		fallthrough
 	default:
-		expr := p.parseExpr()
+		expr := p.parseExpr(false)
 		if expr == nil {
 			return nil
 		}
@@ -625,7 +625,7 @@ func (p *Parser)parseAssign()(*ast.AssignStmt){
 		if !p.next() {
 			return nil
 		}
-		expr := p.parseExpr()
+		expr := p.parseExpr(false)
 		if expr == nil {
 			return nil
 		}
@@ -649,10 +649,10 @@ func (p *Parser)ParseExpr()(expr ast.Expr){
 	if !p.next() {
 		return nil
 	}
-	return p.parseExpr()
+	return p.parseExpr(false)
 }
 
-func (p *Parser)parseExpr()(expr ast.Expr){
+func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 	for {
 		pos, tok := p.pos, p.tok
 		// println("tok:", tok.String())
@@ -692,10 +692,7 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 				Value: p.lit,
 			}
 		case token.NOT:
-			if !p.next() {
-				return
-			}
-			exp := p.parseExpr()
+			exp := p.ParseExpr()
 			if exp == nil {
 				return
 			}
@@ -705,12 +702,9 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 				X: exp,
 			}
 			break
-		case token.MUL, token.AND, token.SUB:
+		case token.MUL, token.AND, token.ADD, token.SUB:
 			if expr == nil {
-				if !p.next() {
-					return
-				}
-				exp := p.parseExpr()
+				exp := p.ParseExpr()
 				if exp == nil {
 					return
 				}
@@ -729,7 +723,7 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 				break
 			}
 			fallthrough
-		case token.ADD, token.QUO, token.REM, token.OR,
+		case token.QUO, token.REM, token.OR,
 				token.XOR, token.SHL, token.SHR, token.AND_NOT,
 				token.LAND, token.LOR, token.EQL, token.LSS, token.GTR,
 				token.NEQ, token.LEQ, token.GEQ:
@@ -737,14 +731,16 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 				p.unexpectErr(p.pos, p.tok, p.lit, "expr")
 				return nil
 			}
-			panic("TODO")
-			expr = p.parseExpr()
+			if parsing2 {
+				return
+			}
+			if expr = p.parseExpr2([]ast.Expr{expr}, []tokT{{p.pos, p.tok, p.lit}}, 0); expr == nil {
+				return nil
+			}
+			return
 		case token.LPAREN:
 			if expr == nil {
-				if !p.next() {
-					return
-				}
-				if expr = p.parseExpr(); expr == nil || !p.nextExpect(token.RPAREN) {
+				if expr = p.ParseExpr(); expr == nil || !p.nextExpect(token.RPAREN) {
 					return nil
 				}
 				expr = &ast.ParenExpr{
@@ -759,7 +755,7 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 				}
 				if p.tok != token.RPAREN {
 					for {
-						arg := p.parseExpr()
+						arg := p.parseExpr(false)
 						if arg == nil {
 							return nil
 						}
@@ -804,6 +800,62 @@ func (p *Parser)parseExpr()(expr ast.Expr){
 		}
 		p.next()
 	}
+}
+
+func zipExprs(l []ast.Expr, ops []tokT, i int)(expr ast.Expr){
+	expr = l[i]
+	for j, o := range ops[i:] {
+		expr = &ast.BinaryExpr{
+			X: expr,
+			OpPos: o.pos,
+			Op: o.tok,
+			Y: l[i + j + 1],
+		}
+	}
+	return
+}
+
+func (p *Parser)parseExpr2(l []ast.Expr, ops []tokT, i int)(expr ast.Expr){
+	if !p.next() {
+		return nil
+	}
+	if expr = p.parseExpr(true); expr == nil {
+		return nil
+	}
+	switch p.tok {
+	case token.ADD, token.SUB, token.MUL, token.QUO, token.REM, token.AND, token.OR,
+			token.XOR, token.SHL, token.SHR, token.AND_NOT,
+			token.LAND, token.LOR, token.EQL, token.LSS, token.GTR,
+			token.NEQ, token.LEQ, token.GEQ:
+		if x, y := ops[len(ops) - 1].tok.Precedence(), p.tok.Precedence(); x > y {
+			l = append(l, expr)
+			expr = zipExprs(l, ops, i)
+			l, ops = l[:i], ops[:i]
+			if i != 0 {
+				if x = ops[i - 1].tok.Precedence(); x >= y {
+					expr = zipExprs(append(l, expr), ops, 0)
+					i, l, ops = 0, l[:0], ops[:0]
+				}
+			}
+		}else if x < y {
+			o0 := ops[len(ops) - 1]
+			l[i], ops[i] = zipExprs(l, ops[:len(ops) - 1], i), o0
+			i += 1
+			l, ops = l[:i], ops[:i]
+		}
+		return p.parseExpr2(append(l, expr), append(ops, tokT{p.pos, p.tok, p.lit}), i)
+	}
+	expr = zipExprs(append(l, expr), ops, i)
+	if i > 0 {
+		x := zipExprs(l, ops[:i - 1], 0)
+		expr = &ast.BinaryExpr{
+			X: x,
+			OpPos: ops[i - 1].pos,
+			Op: ops[i - 1].tok,
+			Y: expr,
+		}
+	}
+	return
 }
 
 func (p *Parser)parseFuncExpr()(fc *ast.FuncType, bd *ast.BlockStmt){
@@ -1174,7 +1226,7 @@ func (p *Parser)parseIf()(*ast.IfStmt){
 	if p.tok == token.SEMICOLON && !p.next() {
 		return nil
 	}
-	if cond = p.parseExpr(); cond == nil || !p.nextExpect(token.LBRACE) {
+	if cond = p.parseExpr(false); cond == nil || !p.nextExpect(token.LBRACE) {
 		return nil
 	}
 	body := p.parseBlock()
@@ -1239,7 +1291,7 @@ func (p *Parser)parseFor()(ast.Stmt){
 			}
 		}
 		if !for3 || p.tok != token.SEMICOLON {
-			if cond = p.parseExpr(); cond == nil || !p.next() {
+			if cond = p.parseExpr(false); cond == nil || !p.next() {
 				return nil
 			}
 		}
