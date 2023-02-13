@@ -128,3 +128,36 @@ func TestFor(t *testing.T){
 		}
 	}
 }
+
+func TestExpr(t *testing.T){
+	type T struct {
+		src string
+		err bool
+	}
+	stmts := []T{
+		{`a`, false},
+		{`a +`, true},
+		{`a + b`, false},
+		{`a + b + c`, false},
+		{`a + b * c`, false},
+		{`a * b + c`, false},
+		{`a + *b + c`, false},
+		{`a + +b + c`, false},
+		{`a + -b + c`, false},
+		{`a + ^b + c`, false},
+		{`a + /b + c`, true},
+	}
+	for _, s := range stmts {
+		t.Logf("Parsing: %s", s.src)
+		parser.Init(([]byte)(s.src))
+		parser.ParseStmt()
+		err := parser.Errs()
+		if s.err {
+			if err == nil {
+				t.Fatalf("Parsing err: got no error; expected one")
+			}
+		}else if err != nil {
+			t.Fatalf("Parsing err: got %v; expected no error", err)
+		}
+	}
+}
