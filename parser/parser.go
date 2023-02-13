@@ -295,70 +295,18 @@ func (p *Parser)ParseStmt()(stmt ast.Stmt){
 	if stmt = p.parseStmt(); stmt == nil {
 		return nil
 	}
-	if p.tok == token.SEMICOLON {
-		return
-	}
-	if _, _, ok := p.peekExpect(token.SEMICOLON, token.EOF); !ok {
+	if !p.expect(token.SEMICOLON) {
 		return nil
 	}
 	return
 }
 
-func (p *Parser)parseStmt()(ast.Stmt){
+func (p *Parser)parseStmt()(stmt ast.Stmt){
 	pos0, tok0, lit0 := p.pos, p.tok, p.lit
 	switch tok0 {
 	case token.SEMICOLON:
-		return nil
-	case token.IF:
-		if !p.next() {
-			return nil
-		}
-		return p.parseIf()
-	case token.SELECT:
-		if !p.next() {
-			return nil
-		}
-		p.parsing = append(p.parsing, token.SELECT)
-		stmt := p.parseSelect()
-		p.parsing = p.parsing[:len(p.parsing) - 1]
-		return stmt
-	case token.SWITCH:
-		if !p.next() {
-			return nil
-		}
-		p.parsing = append(p.parsing, token.SWITCH)
-		stmt := p.parseSwitch()
-		p.parsing = p.parsing[:len(p.parsing) - 1]
-		return stmt
-	case token.FOR:
-		if !p.next() {
-			return nil
-		}
-		p.parsing = append(p.parsing, token.FOR)
-		stmt := p.parseFor()
-		p.parsing = p.parsing[:len(p.parsing) - 1]
-		return stmt
-	case token.GO:
-		expr := p.ParseExpr()
-		call, ok := expr.(*ast.CallExpr)
-		if !ok || call == nil {
-			p.unexpectErr(pos0, tok0, lit0, "a func call")
-			return nil
-		}
-		return &ast.GoStmt{
-			Go: pos0,
-			Call: call,
-		}
-	case token.DEFER:
-		expr := p.ParseExpr()
-		call, ok := expr.(*ast.CallExpr)
-		if !ok || call == nil {
-			p.unexpectErr(pos0, tok0, lit0, "a func call")
-			return nil
-		}
-		return &ast.DeferStmt{
-			Defer: pos0,
-			Call: call,
+		return &ast.EmptyStmt{
+			Semicolon: pos0,
 		}
 	case token.TYPE:
 		decl := p.parseDecl(func()(ast.Spec){
@@ -387,7 +335,7 @@ func (p *Parser)parseStmt()(ast.Stmt){
 				Type: typ,
 			}
 		})
-		if decl == nil {
+		if decl == nil || !p.nextExpect(token.SEMICOLON) {
 			return nil
 		}
 		return &ast.DeclStmt{Decl: decl}
@@ -442,10 +390,64 @@ func (p *Parser)parseStmt()(ast.Stmt){
 				Values: rhs,
 			}
 		})
-		if decl == nil {
+		if decl == nil || !p.nextExpect(token.SEMICOLON) {
 			return nil
 		}
 		return &ast.DeclStmt{Decl: decl}
+	case token.IF:
+		if !p.next() {
+			return nil
+		}
+		if stmt = p.parseIf(); stmt == nil || !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return
+	case token.SELECT:
+		if !p.next() {
+			return nil
+		}
+		if stmt = p.parseSelect(); stmt == nil || !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return
+	case token.SWITCH:
+		if !p.next() {
+			return nil
+		}
+		if stmt = p.parseSwitch(); stmt == nil || !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return
+	case token.FOR:
+		if !p.next() {
+			return nil
+		}
+		if stmt = p.parseFor(); stmt == nil || !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return
+	case token.GO:
+		expr := p.ParseExpr()
+		call, ok := expr.(*ast.CallExpr)
+		if !ok || call == nil {
+			p.unexpectErr(pos0, tok0, lit0, "a func call")
+			return nil
+		}
+		return &ast.GoStmt{
+			Go: pos0,
+			Call: call,
+		}
+	case token.DEFER:
+		expr := p.ParseExpr()
+		call, ok := expr.(*ast.CallExpr)
+		if !ok || call == nil {
+			p.unexpectErr(pos0, tok0, lit0, "a func call")
+			return nil
+		}
+		return &ast.DeferStmt{
+			Defer: pos0,
+			Call: call,
+		}
 	case token.FUNC:
 		recv, name, ok := p.parseFuncDecl()
 		if !ok {
@@ -455,24 +457,35 @@ func (p *Parser)parseStmt()(ast.Stmt){
 		if fc == nil {
 			return nil
 		}
-		return &ast.DeclStmt{Decl: &ast.FuncDecl{
-			Recv: recv,
-			Name: name,
-			Type: fc,
-			Body: bd,
-		} }
+		if !p.next() {
+			return nil
+		}
+		return &ast.DeclStmt{
+			Decl: &ast.FuncDecl{
+				Recv: recv,
+				Name: name,
+				Type: fc,
+				Body: bd,
+			},
+		}
 	case token.LBRACE:
-		return p.parseBlock()
+		stmt = p.parseBlock()
+		if !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return
 	case token.IDENT:
 		if p.hasTokBefore(token.ASSIGN, token.SEMICOLON) || p.hasTokBefore(token.DEFINE, token.SEMICOLON) {
-			return p.parseAssign()
+			if stmt = p.parseAssign(); stmt == nil || !p.next() {
+				return nil
+			}
+			return
 		}
 		_, tok, _ := p.peek()
 		switch tok {
 		case token.COLON:
 			p.next()
-			stmt := p.ParseStmt()
-			if stmt == nil {
+			if stmt = p.ParseStmt(); stmt == nil {
 				return nil
 			}
 			return &ast.LabeledStmt{
@@ -485,6 +498,9 @@ func (p *Parser)parseStmt()(ast.Stmt){
 			}
 		case token.INC, token.DEC:
 			p.next()
+			if !p.next() {
+				return nil
+			}
 			return &ast.IncDecStmt{
 				X: &ast.Ident{
 					NamePos: pos0,
@@ -498,6 +514,9 @@ func (p *Parser)parseStmt()(ast.Stmt){
 	default:
 		expr := p.parseExpr(false)
 		if expr == nil {
+			return nil
+		}
+		if !p.next() {
 			return nil
 		}
 		return &ast.ExprStmt{X: expr}
@@ -1227,7 +1246,7 @@ func (p *Parser)parseIf()(*ast.IfStmt){
 		cond ast.Expr
 	)
 	if p.hasTokBefore(token.SEMICOLON, token.LBRACE) {
-		if st = p.parseStmt(); (st == nil && p.tok != token.SEMICOLON) || !p.nextExpect(token.SEMICOLON) {
+		if st = p.parseStmt(); st == nil {
 			return nil
 		}
 	}
@@ -1289,12 +1308,7 @@ func (p *Parser)parseFor()(ast.Stmt){
 		}
 		for3 := p.tok == token.SEMICOLON || p.hasTokBefore(token.SEMICOLON, token.LBRACE)
 		if for3 {
-			if p.tok != token.SEMICOLON {
-				if s1 = p.parseStmt(); s1 == nil || !p.nextExpect(token.SEMICOLON) {
-					return nil
-				}
-			}
-			if !p.next() {
+			if s1 = p.parseStmt(); s1 == nil || !p.next() {
 				return nil
 			}
 		}
@@ -1308,7 +1322,7 @@ func (p *Parser)parseFor()(ast.Stmt){
 				return nil
 			}
 			if p.tok != token.LBRACE {
-				if s3 = p.parseStmt(); s3 == nil || !p.next() {
+				if s3 = p.parseStmt(); s3 == nil {
 					return nil
 				}
 			}
@@ -1318,7 +1332,9 @@ func (p *Parser)parseFor()(ast.Stmt){
 		}
 	}
 	body := p.parseBlock()
-	if body == nil { return nil }
+	if body == nil {
+		return nil
+	}
 	return &ast.ForStmt{
 		For: pos,
 		Init: s1,
