@@ -104,10 +104,8 @@ func printNode(csl *ucl.Console, n ast.Node){
 func printNode0(csl *ucl.Console, n ast.Node, deep int){
 	switch n0 := n.(type) {
 	case *ast.Ident:
-		printIndent(csl, deep)
-		csl.Printf(" %s ", n0.Name)
+		csl.Printf("%s", n0.Name)
 	case *ast.BasicLit:
-		printIndent(csl, deep)
 		csl.Printf("(%s)", n0.Value)
 	case *ast.FuncLit:
 		printNode0(csl, n0.Type, deep)
@@ -116,30 +114,29 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 	case *ast.CompositeLit:
 		if n0.Type != nil {
 			printNode0(csl, n0.Type, deep)
-		}else{
-			printIndent(csl, deep)
 		}
 		csl.Print("{\r\n")
 		for _, e := range n0.Elts {
+			printIndent(csl, deep)
 			printNode0(csl, e, deep + 1)
 			csl.Print(",\r\n")
 		}
 		printIndent(csl, deep)
 		csl.Print("}")
 	case *ast.ParenExpr:
-		printIndent(csl, deep)
 		csl.Print("(\r\n")
+		printIndent(csl, deep)
 		printNode0(csl, n0.X, deep + 1)
 		csl.Print("\r\n")
 		printIndent(csl, deep)
 		csl.Print(")")
 	case *ast.SelectorExpr:
 		// TODO
-		printIndent(csl, deep)
 		csl.Printf("%#v", *n0)
 	case *ast.IndexExpr:
 		printNode0(csl, n0.X, deep)
 		csl.Print("[\r\n")
+		printIndent(csl, deep)
 		printNode0(csl, n0.Index, deep + 1)
 		csl.Print("\r\n")
 		printIndent(csl, deep)
@@ -148,6 +145,7 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		printNode0(csl, n0.X, deep)
 		csl.Print("[\r\n")
 		for _, e := range n0.Indices {
+		printIndent(csl, deep)
 			printNode0(csl, e, deep + 1)
 			csl.Print(",\r\n")
 		}
@@ -155,42 +153,94 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		csl.Print("]")
 	case *ast.SliceExpr:
 		// TODO
-		printIndent(csl, deep)
 		csl.Printf("%#v", *n0)
 	case *ast.TypeAssertExpr:
 		// TODO
-		printIndent(csl, deep)
 		csl.Printf("%#v", *n0)
 	case *ast.CallExpr:
 		printNode0(csl, n0.Fun, deep)
-		csl.Print("(\r\n")
-		for _, e := range n0.Args {
-			printNode0(csl, e, deep + 1)
-			csl.Print(",\r\n")
+		csl.Print("(")
+		if len(n0.Args) != 0 {
+			csl.Print("\r\n")
+			for _, e := range n0.Args {
+				printIndent(csl, deep)
+				printNode0(csl, e, deep + 1)
+				csl.Print(",\r\n")
+			}
 		}
 		printIndent(csl, deep)
 		csl.Print(")")
 	case *ast.StarExpr:
-		// TODO
+		csl.Print("*")
 		printIndent(csl, deep)
-		csl.Printf("%#v", *n0)
+		printNode0(csl, n0.X, deep)
 	case *ast.UnaryExpr:
-		// TODO
+		csl.Print(n0.Op)
 		printIndent(csl, deep)
-		csl.Printf("%#v", *n0)
+		printNode0(csl, n0.X, deep)
 	case *ast.BinaryExpr:
-		printIndent(csl, deep)
 		csl.Printf("[ %s\r\n", n0.Op.String())
+		printIndent(csl, deep + 1)
 		printNode0(csl, n0.X, deep + 1)
 		csl.Print(",\r\n")
+		printIndent(csl, deep + 1)
 		printNode0(csl, n0.Y, deep + 1)
 		csl.Print("\r\n")
 		printIndent(csl, deep)
 		csl.Print("]")
+	case *ast.KeyValueExpr:
+		printNode0(csl, n0.Key, deep)
+		csl.Print(": ")
+		printNode0(csl, n0.Value, deep)
+	case *ast.ArrayType:
+		csl.Print("[")
+		if n0.Len != nil {
+			printNode0(csl, n0.Len, deep + 1)
+		}
+		csl.Print("]")
+		printNode0(csl, n0.Elt, deep + 1)
+	case *ast.StructType:
+		csl.Print("struct{")
+		if n0.Fields != nil && len(n0.Fields.List) != 0 {
+			csl.Print("\r\n")
+			for _, e := range n0.Fields.List {
+				printIndent(csl, deep + 1)
+				printNode0(csl, e, deep + 1)
+				csl.Print("\r\n")
+			}
+		}
+		csl.Print("}")
+	case *ast.FuncType:
+		csl.Print("func(")
+		if n0.Params != nil && len(n0.Params.List) != 0 {
+			csl.Print("\r\n")
+			for _, e := range n0.Params.List {
+				printIndent(csl, deep + 1)
+				printNode0(csl, e, deep + 1)
+				csl.Print(",\r\n")
+			}
+			printIndent(csl, deep)
+		}
+		csl.Print(")")
+		if n0.Params != nil && len(n0.Params.List) != 0 {
+			csl.Print(" (")
+			for _, e := range n0.Params.List {
+				printIndent(csl, deep + 1)
+				printNode0(csl, e, deep + 1)
+				csl.Print(",\r\n")
+			}
+			printIndent(csl, deep)
+			csl.Print(")")
+		}
+	case *ast.DeclStmt:
+		printNode0(csl, n0.Decl, deep)
+	case *ast.LabeledStmt:
+		printNode0(csl, n0.Label, deep)
+		csl.Print(": ")
+		printNode0(csl, n0.Stmt, deep)
 	case *ast.ExprStmt:
 		printNode0(csl, n0.X, deep)
 	default:
-		printIndent(csl, deep)
 		csl.Printf("%#v", n)
 	}
 }
