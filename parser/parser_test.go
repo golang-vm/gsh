@@ -134,7 +134,7 @@ func TestExpr(t *testing.T){
 		src string
 		err bool
 	}
-	stmts := []T{
+	exprs := []T{
 		{`a`, false},
 		{`a +`, true},
 		{`a + b`, false},
@@ -147,7 +147,7 @@ func TestExpr(t *testing.T){
 		{`a + ^b + c`, false},
 		{`a + /b + c`, true},
 	}
-	for _, s := range stmts {
+	for _, s := range exprs {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
 		_ = parser.ParseExpr()
@@ -167,12 +167,13 @@ func TestType(t *testing.T){
 		src string
 		err bool
 	}
-	stmts := []T{
+	exprs := []T{
 		{`*`, true},
 		{`int`, false},
 		{`*int`, false},
 		{`*(int)`, false},
 		{`(*int)`, false},
+		{`[]`, true},
 		{`[int`, true},
 		{`[]int`, false},
 		{`*[]int`, false},
@@ -183,8 +184,12 @@ func TestType(t *testing.T){
 		{`[[]int]int`, false}, // Should ok to be parsed? or check later
 		{`([]int + string)`, true},
 		{`[...]int`, false},
+		{`[...a]int`, true},
+		{`[a...]int`, false}, // Check later?
+		{`a []int`, true},
 		{`map`, true},
 		{`map[`, true},
+		{`map[]int`, true},
 		{`map[string]`, true},
 		{`map[string]int`, false},
 		{`chan`, true},
@@ -206,6 +211,7 @@ func TestType(t *testing.T){
 		{`func(a, b string)`, false},
 		{`func(struct{}, b string)`, true},
 		{`func(a, b string, c)`, true},
+		{`func()()`, false},
 		{`func()int`, false},
 		{`func()(int)`, false},
 		{`func()(int,)`, false},
@@ -217,7 +223,7 @@ func TestType(t *testing.T){
 		{`func()(a int, b string, c)`, true},
 		{`func(int)(a int, b string, c *int)`, false},
 	}
-	for _, s := range stmts {
+	for _, s := range exprs {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
 		_ = parser.ParseExpr()

@@ -695,11 +695,15 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 				}
 			}
 		case token.LBRACK, token.STRUCT, token.INTERFACE, token.MAP, token.CHAN, token.ARROW:
+			if expr != nil {
+				p.unexpectErr(p.pos, p.tok, p.lit, "")
+				return nil
+			}
 			return p.parseType()
 		case token.IDENT:
 			if expr != nil {
 				p.unexpectErr(p.pos, p.tok, p.lit, "")
-				return
+				return nil
 			}
 			expr = &ast.Ident{
 				NamePos: p.pos,
@@ -708,7 +712,7 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 		case token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING:
 			if expr != nil {
 				p.unexpectErr(p.pos, p.tok, p.lit, "")
-				return
+				return nil
 			}
 			expr = &ast.BasicLit{
 				ValuePos: p.pos,
@@ -716,32 +720,34 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 				Value: p.lit,
 			}
 		case token.NOT:
-			exp := p.ParseExpr()
-			if exp == nil {
+			if expr != nil {
+				p.unexpectErr(p.pos, p.tok, p.lit, "")
+				return nil
+			}
+			if expr = p.ParseExpr(); expr == nil {
 				return
 			}
 			expr = &ast.UnaryExpr{
 				OpPos: pos,
 				Op: tok,
-				X: exp,
+				X: expr,
 			}
 			break
 		case token.MUL, token.AND, token.ADD, token.SUB, token.XOR:
 			if expr == nil {
-				exp := p.ParseExpr()
-				if exp == nil {
+				if expr = p.ParseExpr(); expr == nil {
 					return
 				}
 				if tok == token.MUL {
 					expr = &ast.StarExpr{
 						Star: pos,
-						X: exp,
+						X: expr,
 					}
 				}else{
 					expr = &ast.UnaryExpr{
 						OpPos: pos,
 						Op: tok,
-						X: exp,
+						X: expr,
 					}
 				}
 				break
