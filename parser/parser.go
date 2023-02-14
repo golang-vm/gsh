@@ -680,7 +680,6 @@ func (p *Parser)ParseExpr()(expr ast.Expr){
 func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 	for {
 		pos, tok := p.pos, p.tok
-		// println("tok:", tok.String())
 		switch tok {
 		case token.FUNC:
 			fc, bd := p.parseFuncExpr()
@@ -924,14 +923,32 @@ func (p *Parser)parseType()(ast.Expr){
 		return p.parseMapType()
 	case token.CHAN, token.ARROW:
 		return p.parseChan()
+	case token.MUL:
+		t := p.ParseType()
+		if t == nil {
+			return nil
+		}
+		return &ast.StarExpr{
+			Star: pos,
+			X: t,
+		}
+	case token.LPAREN:
+		t := p.parseExpr(false)
+		if t == nil || !p.expect(token.RPAREN) {
+			return nil
+		}
+		return &ast.ParenExpr{
+			Lparen: pos,
+			X: t,
+			Rparen: p.pos,
+		}
 	case token.IDENT:
 		return &ast.Ident{
 			NamePos: pos,
 			Name: p.lit,
 		}
 	default:
-		p.unexpectErr(p.pos, p.tok, p.lit,
-			fmt.Sprint(token.LBRACK, token.MUL, token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW, token.IDENT))
+		p.unexpectErr(p.pos, p.tok, p.lit, "a type")
 		return nil
 	}
 }
@@ -947,13 +964,15 @@ func (p *Parser)parseArrayType()(*ast.ArrayType){
 			Ellipsis: p.pos,
 		}
 	case token.RBRACK:
-		p.next()
 	case token.EOF:
 		return nil
 	default:
 		if ln = p.ParseExpr(); ln == nil {
 			return nil
 		}
+	}
+	if !p.next() {
+		return nil
 	}
 	val := p.ParseType()
 	if val == nil {
@@ -1112,7 +1131,7 @@ func (p *Parser)parseFuncType()(*ast.FuncType){
 	}
 	var parm, res *ast.FieldList
 	if p.tok == token.RPAREN {
-		if t == token.EOF || (t != token.LPAREN && t != token.IDENT) {
+		if t != token.LPAREN && t != token.IDENT {
 			return &ast.FuncType{
 				Func: pos,
 			}

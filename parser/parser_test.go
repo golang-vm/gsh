@@ -45,7 +45,7 @@ func TestVar(t *testing.T){
 	for _, s := range stmts {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
-		parser.ParseStmt()
+		_ = parser.ParseStmt()
 		err := parser.Errs()
 		if s.err {
 			if err == nil {
@@ -83,7 +83,7 @@ func TestIf(t *testing.T){
 	for _, s := range stmts {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
-		parser.ParseStmt()
+		_ = parser.ParseStmt()
 		err := parser.Errs()
 		if s.err {
 			if err == nil {
@@ -117,7 +117,7 @@ func TestFor(t *testing.T){
 	for _, s := range stmts {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
-		parser.ParseStmt()
+		_ = parser.ParseStmt()
 		err := parser.Errs()
 		if s.err {
 			if err == nil {
@@ -150,7 +150,77 @@ func TestExpr(t *testing.T){
 	for _, s := range stmts {
 		t.Logf("Parsing: %s", s.src)
 		parser.Init(([]byte)(s.src))
-		parser.ParseStmt()
+		_ = parser.ParseExpr()
+		err := parser.Errs()
+		if s.err {
+			if err == nil {
+				t.Fatalf("Parsing err: got no error; expected one")
+			}
+		}else if err != nil {
+			t.Fatalf("Parsing err: got %v; expected no error", err)
+		}
+	}
+}
+
+func TestType(t *testing.T){
+	type T struct {
+		src string
+		err bool
+	}
+	stmts := []T{
+		{`*`, true},
+		{`int`, false},
+		{`*int`, false},
+		{`*(int)`, false},
+		{`(*int)`, false},
+		{`[int`, true},
+		{`[]int`, false},
+		{`*[]int`, false},
+		{`[int]`, true},
+		{`[0]int`, false},
+		{`[a]int`, false},
+		{`[[]]int`, true},
+		{`[[]int]int`, false}, // Should ok to be parsed? or check later
+		{`([]int + string)`, true},
+		{`[...]int`, false},
+		{`map`, true},
+		{`map[`, true},
+		{`map[string]`, true},
+		{`map[string]int`, false},
+		{`chan`, true},
+		{`chan int`, false},
+		{`<-chan int`, false},
+		{`chan<- int`, false},
+		{`<-chan <-chan int`, false},
+		{`chan<- chan int`, false},
+		{`chan (<-chan int)`, false},
+		{`chan<- chan<- int`, false},
+		{`<-chan <-chan <- int`, true},
+		{`func`, true},
+		{`func()`, false},
+		{`func(int)`, false},
+		{`func(int, string)`, false},
+		{`func(a int)`, false},
+		{`func(a int, string)`, true},
+		{`func(a int, b string)`, false},
+		{`func(a, b string)`, false},
+		{`func(struct{}, b string)`, true},
+		{`func(a, b string, c)`, true},
+		{`func()int`, false},
+		{`func()(int)`, false},
+		{`func()(int,)`, false},
+		{`func()(a int)`, false},
+		{`func() a int`, true},
+		{`func()(a, b int)`, false},
+		{`func()(a int, string)`, true},
+		{`func()(a int, b string)`, false},
+		{`func()(a int, b string, c)`, true},
+		{`func(int)(a int, b string, c *int)`, false},
+	}
+	for _, s := range stmts {
+		t.Logf("Parsing: %s", s.src)
+		parser.Init(([]byte)(s.src))
+		_ = parser.ParseExpr()
 		err := parser.Errs()
 		if s.err {
 			if err == nil {

@@ -124,11 +124,8 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		printIndent(csl, deep)
 		csl.Print("}")
 	case *ast.ParenExpr:
-		csl.Print("(\r\n")
-		printIndent(csl, deep)
+		csl.Print("(")
 		printNode0(csl, n0.X, deep + 1)
-		csl.Print("\r\n")
-		printIndent(csl, deep)
 		csl.Print(")")
 	case *ast.SelectorExpr:
 		// TODO
@@ -232,6 +229,32 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 			printIndent(csl, deep)
 			csl.Print(")")
 		}
+	case *ast.InterfaceType:
+		csl.Print("interface{")
+		if n0.Methods != nil && len(n0.Methods.List) != 0 {
+			csl.Print("\r\n")
+			for _, e := range n0.Methods.List {
+				printIndent(csl, deep + 1)
+				printNode0(csl, e, deep + 1)
+				csl.Print("\r\n")
+			}
+		}
+		csl.Print("}")
+	case *ast.MapType:
+		csl.Print("map[")
+		printNode0(csl, n0.Key, deep + 1)
+		csl.Print("]")
+		printNode0(csl, n0.Value, deep + 1)
+	case *ast.ChanType:
+		if n0.Dir == ast.RECV {
+			csl.Print("<-")
+		}
+		csl.Print("chan")
+		if n0.Dir == ast.SEND {
+			csl.Print("<-")
+		}
+		csl.Print(" ")
+		printNode0(csl, n0.Value, deep + 1)
 	case *ast.DeclStmt:
 		printNode0(csl, n0.Decl, deep)
 	case *ast.LabeledStmt:
