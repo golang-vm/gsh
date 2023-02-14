@@ -18,6 +18,8 @@ type LineReader interface{
 type Scanner struct{
 	r LineReader
 	fileset *token.FileSet
+	// unstable
+	CommentEOFHack bool
 }
 
 func NewScanner(r LineReader)(*Scanner){
@@ -38,6 +40,7 @@ func (s *Scanner)Scan()(nodes []ast.Node, err error){
 
 	var parser Parser
 	parser.Init(append(line, '\n'))
+	parser.CommentEOFHack = s.CommentEOFHack
 	for {
 		nodes, err = parser.Parse()
 		if err == nil {

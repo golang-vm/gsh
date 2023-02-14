@@ -28,6 +28,9 @@ type Parser struct{
 	lit string
 	tokbuf []tokT
 
+	// unstable
+	CommentEOFHack bool
+
 	parsing []token.Token
 }
 
@@ -40,7 +43,7 @@ func (p *Parser)Init(src []byte)(*Parser){
 func (p *Parser)Reset(){
 	p.file = token.NewFileSet().AddFile("", -1, len(p.src))
 	p.errs.Reset()
-	p.scanner.Init(p.file, p.src, p.errs.Add, 0)
+	p.scanner.Init(p.file, p.src, p.errs.Add, 0 & scanner.ScanComments)
 	p.unexpectEOF, p.eof = false, false
 	p.pos, p.tok, p.lit = token.NoPos, token.ILLEGAL, ""
 	p.tokbuf = p.tokbuf[:0]
@@ -72,11 +75,30 @@ func (p *Parser)IsUnexpectEOF()(bool){
 	return p.unexpectEOF
 }
 
+func (p *Parser)Scan()(pos token.Pos, tok token.Token, lit string){
+	if !p.CommentEOFHack {
+		return p.scanner.Scan()
+	}
+	ei := len(p.errs)
+	pos, tok, lit = p.scanner.Scan()
+	if ei < len(p.errs) {
+		if p.errs[ei].Msg == "comment not terminated" {
+			p.unexpectEOF = true
+			p.eof = true
+			if tok == token.COMMENT {
+				tok, lit = token.EOF, ""
+			}
+			return
+		}
+	}
+	return
+}
+
 func (p *Parser)peekMore()(pos token.Pos, tok token.Token, lit string){
 	if p.eof {
 		return p.pos, token.EOF, p.lit
 	}
-	pos, tok, lit = p.scanner.Scan()
+	pos, tok, lit = p.Scan()
 	p.tokbuf = append(p.tokbuf, tokT{pos, tok, lit})
 	if tok == token.EOF {
 		return
@@ -139,7 +161,7 @@ func (p *Parser)hasTokBefore(target, before token.Token)(ok bool){
 		lit string
 	)
 	for {
-		pos, tok, lit = p.scanner.Scan()
+		pos, tok, lit = p.Scan()
 		if tok == token.EOF {
 			return false
 		}
@@ -167,7 +189,7 @@ func (p *Parser)next()(bool){
 		}
 		return !p.eof
 	}
-	p.pos, p.tok, p.lit = p.scanner.Scan()
+	p.pos, p.tok, p.lit = p.Scan()
 	if p.tok == token.EOF {
 		p.unexpectErr(p.pos, p.tok, p.lit, "")
 		p.eof = true
@@ -249,6 +271,12 @@ func (p *Parser)Parse()(nodes []ast.Node, err error){
 			nodes = append(nodes, imp)
 		case token.SEMICOLON:
 			p.next()
+		case token.COMMENT:
+			p.next()
+			nodes = append(nodes, &ast.Comment{
+				Slash: p.pos,
+				Text: p.lit,
+			})
 		default:
 			n := p.ParseStmt()
 			if n == nil {

@@ -33,6 +33,7 @@ func main(){
 
 	cslw := consoleWrapper{csl}
 	scn := parser.NewScanner(cslw)
+	scn.CommentEOFHack = true
 	main: for {
 		cslw.Reset()
 		nodes, err := scn.Scan()
