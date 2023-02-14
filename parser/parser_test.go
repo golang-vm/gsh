@@ -151,6 +151,22 @@ func TestExpr(t *testing.T){
 		{"a(b...,\n)", false},
 		{"a(b..., c)", true},
 		{"a(b..., c...)", true},
+		{"a[", true},
+		{"a[]", true},
+		{"a[0]", false},
+		{"a[a + b]", false},
+		{"a[]int", true},
+		{"a[...]", true},
+		{"a[...]int", true},
+		{"a[0][1]", false},
+		{"a[0:1]", false},
+		{"a[0]1]", true},
+		{"a[0:1:2]", false},
+		{"a[0:1]2]", true},
+		{"a[0:1:2:3]", true},
+		{"a[:::]", true},
+		{"a[:]", false},
+		{"a[:][0]", false},
 	}
 	for _, s := range exprs {
 		t.Logf("Parsing: %s", s.src)

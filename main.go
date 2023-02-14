@@ -138,11 +138,8 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		csl.Printf("%#v", *n0)
 	case *ast.IndexExpr:
 		printNode0(csl, n0.X, deep)
-		csl.Print("[\r\n")
-		printIndent(csl, deep)
+		csl.Print("[")
 		printNode0(csl, n0.Index, deep + 1)
-		csl.Print("\r\n")
-		printIndent(csl, deep)
 		csl.Print("]")
 	case *ast.IndexListExpr:
 		printNode0(csl, n0.X, deep)
@@ -155,8 +152,22 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		printIndent(csl, deep)
 		csl.Print("]")
 	case *ast.SliceExpr:
-		// TODO
-		csl.Printf("%#v", *n0)
+		printNode0(csl, n0.X, deep)
+		csl.Print("[")
+		if n0.Low != nil {
+			printNode0(csl, n0.Low, deep + 1)
+		}
+		csl.Print(":")
+		if n0.High != nil {
+			printNode0(csl, n0.High, deep + 1)
+		}
+		if n0.Slice3 {
+			csl.Print(":")
+			if n0.Max != nil {
+				printNode0(csl, n0.Max, deep + 1)
+			}
+		}
+		csl.Print("]")
 	case *ast.TypeAssertExpr:
 		// TODO
 		csl.Printf("%#v", *n0)

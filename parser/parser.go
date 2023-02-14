@@ -50,6 +50,10 @@ func (p *Parser)Reset(){
 	p.parsing = p.parsing[:0]
 }
 
+func (p *Parser)addErr(pos token.Pos, err string){
+	p.errs.Add(p.file.Position(pos), err)
+}
+
 func (p *Parser)unexpectErr(pos token.Pos, tok token.Token, lit string, msg string){
 	if tok == token.EOF {
 		p.unexpectEOF = true
@@ -61,7 +65,7 @@ func (p *Parser)unexpectErr(pos token.Pos, tok token.Token, lit string, msg stri
 	if len(msg) > 0 {
 		err += ", expect " + msg
 	}
-	p.errs.Add(p.file.Position(pos), err)
+	p.addErr(pos, err)
 }
 
 func (p *Parser)Errs()(err error){
@@ -260,7 +264,7 @@ func (p *Parser)Parse()(nodes []ast.Node, err error){
 		}
 		switch tok {
 		case token.PACKAGE:
-			p.errs.Add(p.file.Position(pos), "Not support package now")
+			p.addErr(pos, "Not support package now")
 			break main
 		case token.IMPORT:
 			p.next()
@@ -496,6 +500,67 @@ func (p *Parser)parseStmt()(stmt ast.Stmt){
 				Body: bd,
 			},
 		}
+	case token.FALLTHROUGH:
+		if !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return &ast.BranchStmt{
+			TokPos: pos0,
+			Tok: tok0,
+		}
+	case token.BREAK, token.CONTINUE:
+		var label *ast.Ident
+		if !p.nextExpect(token.IDENT, token.SEMICOLON) {
+			return nil
+		}
+		if p.tok == token.IDENT {
+			label = &ast.Ident{
+				NamePos: p.pos,
+				Name: p.lit,
+			}
+			if !p.nextExpect(token.SEMICOLON) {
+				return nil
+			}
+		}
+		return &ast.BranchStmt{
+			TokPos: pos0,
+			Tok: tok0,
+			Label: label,
+		}
+	case token.GOTO:
+		if !p.nextExpect(token.IDENT) {
+			return nil
+		}
+		label := &ast.Ident{
+			NamePos: p.pos,
+			Name: p.lit,
+		}
+		if !p.nextExpect(token.SEMICOLON) {
+			return nil
+		}
+		return &ast.BranchStmt{
+			TokPos: pos0,
+			Tok: tok0,
+			Label: label,
+		}
+	case token.RETURN:
+		var res []ast.Expr
+		for p.next() {
+			if p.tok != token.SEMICOLON {
+				r := p.parseExpr(false)
+				if r == nil || !p.nextExpect(token.COMMA, token.SEMICOLON) {
+					return nil
+				}
+				res = append(res, r)
+			}
+			if p.tok == token.SEMICOLON {
+				return &ast.ReturnStmt{
+					Return: pos0,
+					Results: res,
+				}
+			}
+		}
+		return nil
 	case token.LBRACE:
 		stmt = p.parseBlock()
 		if !p.nextExpect(token.SEMICOLON) {
@@ -722,9 +787,63 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 					Body: bd,
 				}
 			}
-		case token.ELLIPSIS:
+		case token.LBRACK:
+			if expr != nil {
+				var exp ast.Expr
+				if !p.next() {
+					return nil
+				}
+				if p.tok != token.COLON {
+					if exp = p.parseExpr(false); exp == nil || !p.nextExpect(token.RBRACK, token.COLON) {
+						return nil
+					}
+					if p.tok == token.RBRACK {
+						expr = &ast.IndexExpr{
+							X: expr,
+							Lbrack: pos,
+							Index: exp,
+							Rbrack: p.pos,
+						}
+						break
+					}
+				}
+				if !p.next() {
+					return nil
+				}
+				var (
+					high, max ast.Expr
+					slice3 bool
+				)
+				if p.tok != token.RBRACK {
+					if p.tok != token.COLON {
+						if high = p.parseExpr(false); high == nil || !p.nextExpect(token.RBRACK, token.COLON) {
+							return nil
+						}
+					}
+					if slice3 = p.tok != token.RBRACK; slice3 {
+						if !p.next() {
+							return nil
+						}
+						if p.tok != token.RBRACK {
+							if max = p.parseExpr(false); max == nil || !p.nextExpect(token.RBRACK) {
+								return nil
+							}
+						}
+					}
+				}
+				expr = &ast.SliceExpr{
+					X: expr,
+					Lbrack: pos,
+					Low: exp,
+					High: high,
+					Max: max,
+					Slice3: slice3,
+					Rbrack: p.pos,
+				}
+				break
+			}
 			fallthrough
-		case token.LBRACK, token.STRUCT, token.INTERFACE, token.MAP, token.CHAN, token.ARROW:
+		case token.ELLIPSIS, token.STRUCT, token.INTERFACE, token.MAP, token.CHAN, token.ARROW:
 			if expr != nil {
 				p.unexpectErr(p.pos, p.tok, p.lit, "")
 				return nil
@@ -860,7 +979,7 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 		switch _, tok, _ = p.peek(); tok {
 		case token.ELLIPSIS:
 			return
-		case token.EOF, token.RPAREN, token.RBRACK, token.RBRACE, token.LBRACE, token.COMMA, token.SEMICOLON:
+		case token.EOF, token.RPAREN, token.RBRACK, token.RBRACE, token.LBRACE, token.COMMA, token.COLON, token.SEMICOLON:
 			return
 		}
 		p.next()
@@ -1098,7 +1217,7 @@ func (p *Parser)parseFuncFields()(*ast.FieldList){
 			})
 		}else{
 			if flg2 {
-				p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+				p.addErr(p.pos, "syntax error: mixed named and unnamed parameters")
 				return nil
 			}
 			flag = true
@@ -1122,7 +1241,7 @@ func (p *Parser)parseFuncFields()(*ast.FieldList){
 		switch p.tok {
 		case token.IDENT, token.MUL, token.STRUCT, token.INTERFACE, token.FUNC, token.MAP, token.CHAN, token.ARROW:
 			if flag {
-				p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+				p.addErr(p.pos, "syntax error: mixed named and unnamed parameters")
 				return nil
 			}
 			flg2 = true
@@ -1151,7 +1270,7 @@ func (p *Parser)parseFuncFields()(*ast.FieldList){
 	}
 	if len(idents) > 0 {
 		if flg2 {
-			p.errs.Add(p.file.Position(p.pos), "syntax error: mixed named and unnamed parameters")
+			p.addErr(p.pos, "syntax error: mixed named and unnamed parameters")
 			return nil
 		}
 		for _, d := range idents {
