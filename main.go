@@ -105,6 +105,11 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 	switch n0 := n.(type) {
 	case *ast.Ident:
 		csl.Printf("%s", n0.Name)
+	case *ast.Ellipsis:
+		csl.Print("...")
+		if n0.Elt != nil {
+			printNode0(csl, n0.Elt, deep)
+		}
 	case *ast.BasicLit:
 		csl.Printf("(%s)", n0.Value)
 	case *ast.FuncLit:
@@ -160,7 +165,7 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		if len(n0.Args) != 0 {
 			csl.Print("\r\n")
 			for _, e := range n0.Args {
-				printIndent(csl, deep)
+				printIndent(csl, deep + 1)
 				printNode0(csl, e, deep + 1)
 				csl.Print(",\r\n")
 			}

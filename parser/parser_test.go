@@ -136,6 +136,43 @@ func TestExpr(t *testing.T){
 	}
 	exprs := []T{
 		{`a`, false},
+		{`a()`, false},
+		{`a()(`, true},
+		{`a()()`, false},
+		{`a(0)`, false},
+		{`a("", *)`, true},
+		{`a("", *b)`, false},
+		{`a(...)`, true},
+		{`a(b...)`, false},
+		{`a(...b)`, false}, // (...b) is a type, will check later
+		{`a(b......)`, true},
+		{`a(b...,)`, false},
+		{"a(b...\n)", false},
+		{"a(b...,\n)", false},
+		{"a(b..., c)", true},
+		{"a(b..., c...)", true},
+	}
+	for _, s := range exprs {
+		t.Logf("Parsing: %s", s.src)
+		parser.Init(([]byte)(s.src))
+		_ = parser.ParseExpr()
+		err := parser.Errs()
+		if s.err {
+			if err == nil {
+				t.Fatalf("Parsing err: got no error; expected one")
+			}
+		}else if err != nil {
+			t.Fatalf("Parsing err: got %v; expected no error", err)
+		}
+	}
+}
+
+func TestMathExpr(t *testing.T){
+	type T struct {
+		src string
+		err bool
+	}
+	exprs := []T{
 		{`a +`, true},
 		{`a + b`, false},
 		{`a + b + c`, false},
@@ -185,7 +222,7 @@ func TestType(t *testing.T){
 		{`([]int + string)`, true},
 		{`[...]int`, false},
 		{`[...a]int`, true},
-		{`[a...]int`, false}, // Check later?
+		{`[a...]int`, true},
 		{`a []int`, true},
 		{`map`, true},
 		{`map[`, true},

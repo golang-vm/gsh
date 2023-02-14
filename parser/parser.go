@@ -694,6 +694,8 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 					Body: bd,
 				}
 			}
+		case token.ELLIPSIS:
+			fallthrough
 		case token.LBRACK, token.STRUCT, token.INTERFACE, token.MAP, token.CHAN, token.ARROW:
 			if expr != nil {
 				p.unexpectErr(p.pos, p.tok, p.lit, "")
@@ -779,7 +781,10 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 					Rparen: p.pos,
 				}
 			}else if isFuncExpr(expr) {
-				var args []ast.Expr
+				var (
+					args []ast.Expr
+					ell token.Pos
+				)
 				if !p.next() {
 					return
 				}
@@ -788,15 +793,22 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 					if arg == nil {
 						return nil
 					}
-					if !p.nextExpect(token.COMMA, token.RPAREN) {
+					if !p.nextExpect(token.ELLIPSIS, token.COMMA, token.RPAREN) {
 						return nil
 					}
 					args = append(args, arg)
+					if p.tok == token.ELLIPSIS {
+						ell = p.pos
+						if !p.nextExpect(token.COMMA, token.RPAREN) || (p.tok == token.COMMA && !p.nextExpect(token.RPAREN)) {
+							return nil
+						}
+						break
+					}
 					if p.tok == token.RPAREN {
 						break
 					}
 					if !p.next() {
-						return
+						return nil
 					}
 				}
 				expr = &ast.CallExpr{
@@ -804,6 +816,7 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 					Lparen: pos,
 					Args: args,
 					Rparen: p.pos,
+					Ellipsis: ell,
 				}
 			}else{
 				p.unexpectErr(p.pos, p.tok, p.lit, "")
@@ -817,11 +830,9 @@ func (p *Parser)parseExpr(parsing2 bool)(expr ast.Expr){
 			return
 		}
 		switch _, tok, _ = p.peek(); tok {
+		case token.ELLIPSIS:
+			return
 		case token.EOF, token.RPAREN, token.RBRACK, token.RBRACE, token.LBRACE, token.COMMA, token.SEMICOLON:
-			if expr == nil {
-				p.unexpectErr(p.pos, p.tok, p.lit, "expr")
-				return nil
-			}
 			return
 		}
 		p.next()
@@ -929,6 +940,15 @@ func (p *Parser)parseType()(ast.Expr){
 		return p.parseMapType()
 	case token.CHAN, token.ARROW:
 		return p.parseChan()
+	case token.ELLIPSIS:
+		t := p.ParseType()
+		if t == nil {
+			return nil
+		}
+		return &ast.Ellipsis{
+			Ellipsis: pos,
+			Elt: t,
+		}
 	case token.MUL:
 		t := p.ParseType()
 		if t == nil {
@@ -1376,9 +1396,7 @@ func (p *Parser)parseRange(pos token.Pos)(*ast.RangeStmt){
 func isFuncExpr(expr ast.Expr)(bool){
 	if expr != nil {
 		switch x := expr.(type) {
-		case *ast.FuncLit:
-			return true
-		case *ast.Ident:
+		case *ast.Ident, *ast.FuncLit, *ast.CallExpr:
 			return true
 		case *ast.ParenExpr:
 			return isFuncExpr(x.X)
