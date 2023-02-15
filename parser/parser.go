@@ -591,6 +591,7 @@ func (p *Parser)parseStmt()(stmt ast.Stmt){
 			}
 		case token.INC, token.DEC:
 			p.next()
+			pos, tok := p.pos, p.tok
 			if !p.next() {
 				return nil
 			}
@@ -599,8 +600,29 @@ func (p *Parser)parseStmt()(stmt ast.Stmt){
 					NamePos: pos0,
 					Name: lit0,
 				},
-				TokPos: p.pos,
-				Tok: p.tok,
+				TokPos: pos,
+				Tok: tok,
+			}
+		case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN, token.REM_ASSIGN,
+			token.AND_ASSIGN, token.OR_ASSIGN, token.XOR_ASSIGN, token.SHL_ASSIGN, token.SHR_ASSIGN, token.AND_NOT_ASSIGN:
+			lhs := &ast.Ident{
+				NamePos: pos0,
+				Name: lit0,
+			}
+			p.next()
+			pos, tok := p.pos, p.tok
+			rhs := p.ParseExpr()
+			if rhs == nil {
+				return nil
+			}
+			if !p.next() {
+				return nil
+			}
+			return &ast.AssignStmt{
+				Lhs: []ast.Expr{lhs},
+				TokPos: pos,
+				Tok: tok,
+				Rhs: []ast.Expr{rhs},
 			}
 		}
 		fallthrough
@@ -747,8 +769,7 @@ func (p *Parser)parseAssign()(*ast.AssignStmt){
 		if expr == nil {
 			return nil
 		}
-		rhs = append(rhs, expr)
-		if len(rhs) >= len(lhs) {
+		if rhs = append(rhs, expr); len(rhs) == len(lhs) {
 			break
 		}
 		if !p.nextExpect(token.COMMA) {

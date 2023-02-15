@@ -280,6 +280,27 @@ func printNode0(csl *ucl.Console, n ast.Node, deep int){
 		printNode0(csl, n0.Stmt, deep)
 	case *ast.ExprStmt:
 		printNode0(csl, n0.X, deep)
+	case *ast.SendStmt:
+		printNode0(csl, n0.Chan, deep + 1)
+		csl.Print("<- ")
+		printNode0(csl, n0.Value, deep + 1)
+	case *ast.IncDecStmt:
+		printNode0(csl, n0.X, deep + 1)
+		csl.Print(n0.Tok.String())
+	case *ast.AssignStmt:
+		for i, e := range n0.Lhs {
+			printNode0(csl, e, deep + 1)
+			if i + 1 < len(n0.Lhs) {
+				csl.Print(", ")
+			}
+		}
+		csl.Printf(" %s ", n0.Tok.String())
+		for i, e := range n0.Rhs {
+			printNode0(csl, e, deep + 1)
+			if i + 1 < len(n0.Lhs) {
+				csl.Print(", ")
+			}
+		}
 	default:
 		csl.Printf("%#v", n)
 	}
